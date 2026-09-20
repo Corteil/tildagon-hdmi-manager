@@ -1,0 +1,27 @@
+[app]
+# The name of your app as displayed in the menu
+name = "HDMI Manager"
+
+# The submenu where your app should appear.
+# One of: "Badge", "Music", "Media", "Apps", "Games"
+category = "Apps"
+
+[entry]
+# The name of your entry point `Application` class
+class = "HDMIManager"
+
+[metadata]
+# Your nickname.  Must be at most 32 characters!
+author = "Corteil"
+
+# License of your app as an SPDX identifier: <https://spdx.org/licenses/>
+license = "MIT"
+
+# URL to the repository of your app.
+url = "https://github.com/Corteil/tildagon-hdmi-manager"
+
+# Description of your app.  Maximum 140 characters!
+description = "Status, attach/detach and identity for the rp2350-hdmi-hexpansion HDMI Mirror hexpansion."
+
+# Version number of your app.  Must be an integer!
+version = "1"
