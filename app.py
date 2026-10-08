@@ -31,7 +31,7 @@ HDMI_PID = 0x4544
 # The one correct protocol for this hexpansion -- see module docstring.
 HDMI_DRIVER = {"header": b"TDHD", "baudrate": 10_000_000}
 
-FACES = ("status", "control", "info")
+FACES = ("status", "info")
 
 STATE_NOT_FOUND = 0
 STATE_IDLE = 1
@@ -266,7 +266,7 @@ class HDMIManager(app.App):
                 self.face = (self.face - 1) % len(FACES)
                 b.clear()
             if b.get(BUTTON_TYPES["CONFIRM"]):
-                if FACES[self.face] == "control":
+                if FACES[self.face] == "status":
                     if self._state() == STATE_MIRRORING:
                         self._detach()
                     elif self.hexp is not None:
@@ -323,8 +323,6 @@ class HDMIManager(app.App):
         f = FACES[self.face]
         if f == "status":
             self._draw_status(ctx)
-        elif f == "control":
-            self._draw_control(ctx)
         else:
             self._draw_info(ctx)
 
@@ -338,22 +336,14 @@ class HDMIManager(app.App):
         ctx.rgb(*STATE_COLOR[state]).move_to(0, 50).text(STATE_LABEL[state])
         if self.port is not None:
             ctx.font_size = 14
-            ctx.rgb(0.7, 0.7, 0.8).move_to(0, 74).text("Port %d" % self.port)
-        ctx.restore()
-
-    def _draw_control(self, ctx):
-        state = self._state()
-        ctx.save()
-        draw_monitor_icon(ctx, 0, -14, 60, state, STATE_COLOR[state])
-        ctx.text_align = ctx.CENTER
-        ctx.text_baseline = ctx.MIDDLE
-        ctx.font_size = 16
+            ctx.rgb(0.7, 0.7, 0.8).move_to(0, 70).text("Port %d" % self.port)
+        ctx.font_size = 14
         if self.hexp is None:
-            ctx.rgb(0.6, 0.6, 0.6).move_to(0, 66).text("Plug in HDMI-HEX")
-        elif state == STATE_MIRRORING:
-            ctx.rgb(0.9, 0.9, 0.9).move_to(0, 66).text("OK: Detach")
+            ctx.rgb(0.6, 0.6, 0.6).move_to(0, 90).text("Plug in HDMI-HEX")
         else:
-            ctx.rgb(0.9, 0.9, 0.9).move_to(0, 66).text("OK: Attach")
+            ctx.rgb(0.9, 0.9, 0.9).move_to(0, 90).text(
+                "OK: Detach" if state == STATE_MIRRORING else "OK: Attach"
+            )
         ctx.restore()
 
     def _draw_info(self, ctx):
