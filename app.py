@@ -16,6 +16,7 @@ License: MIT
 """
 import app
 import math
+import time
 import display
 
 from events.input import Buttons, BUTTON_TYPES
@@ -32,6 +33,12 @@ HDMI_PID = 0x4544
 HDMI_DRIVER = {"header": b"TDHD", "baudrate": 10_000_000}
 
 FACES = ("status", "info")
+
+# LS_A is wired to the RP2350's RUN pin: pulling it low resets the board.
+# Same pulse as rp2350-hdmi-hexpansion's own badge_app, with the same
+# settle time before attaching so the RP2350 has finished rebooting.
+RESET_PULSE_MS = 10
+RESET_SETTLE_MS = 1500
 
 STATE_NOT_FOUND = 0
 STATE_IDLE = 1
@@ -156,6 +163,11 @@ class HDMIManager(app.App):
         self._led_phase = 0
         self._led_state = None
 
+        # Non-blocking reset settle: ms left before the RP2350 is ready,
+        # and whether to attach the mirror once it is.
+        self._wait_ms = 0
+        self._then_attach = False
+
         eventbus.on_async(RequestForegroundPushEvent, self._resume, self)
         eventbus.on_async(RequestForegroundPopEvent, self._pause, self)
         eventbus.on_async(HexpansionMountedEvent, self._mounted, self)
@@ -201,6 +213,8 @@ class HDMIManager(app.App):
             self.hexp = None
             self.port = None
             self.header = None
+            self._wait_ms = 0
+            self._then_attach = False
 
     # --- mirror state ---------------------------------------------------
 
@@ -225,6 +239,35 @@ class HDMIManager(app.App):
         except Exception as e:
             print("HDMI Manager: attach failed:", e)
 
+    def _reset_rp2350(self):
+        """Detach, then pulse LS_A low to hardware-reset the RP2350, then
+        wait RESET_SETTLE_MS (in update(), not blocking) before returning
+        to idle. Returns False if the pin isn't available."""
+        try:
+            ls_a = self.hexp.config.ls_pin[0]
+        except Exception as e:
+            print("HDMI Manager: no LS_A pin:", e)
+            return False
+        self._detach()
+        try:
+            ls_a.init(ls_a.OUT)
+            ls_a.value(0)
+            time.sleep_ms(RESET_PULSE_MS)
+            ls_a.init(ls_a.IN)  # release: RUN's own pull-up takes over
+        except Exception as e:
+            print("HDMI Manager: LS_A reset failed:", e)
+            return False
+        self._wait_ms = RESET_SETTLE_MS
+        return True
+
+    def _attach_with_reset(self):
+        """Reset the RP2350, then attach once it has settled. If LS_A
+        can't be pulsed, fall back to a plain attach."""
+        if self._reset_rp2350():
+            self._then_attach = True
+        else:
+            self._attach()
+
     def _detach(self):
         try:
             display.detach_mirror(0)
@@ -235,6 +278,13 @@ class HDMIManager(app.App):
 
     def update(self, delta):
         b = self.button_states
+        if self._wait_ms > 0:
+            self._wait_ms -= delta
+            if self._wait_ms <= 0:
+                self._wait_ms = 0
+                if self._then_attach:
+                    self._then_attach = False
+                    self._attach()
         if b.get(BUTTON_TYPES["CANCEL"]):
             b.clear()
             if self._editing:
@@ -268,15 +318,21 @@ class HDMIManager(app.App):
                 step -= 1
             if step:
                 self.face = (self.face + step) % len(FACES)
+            reset_req = b.pressed(BUTTON_TYPES["UP"])
             if b.pressed(BUTTON_TYPES["CONFIRM"]):
                 if FACES[self.face] == "status":
-                    if self._state() == STATE_MIRRORING:
+                    if self._wait_ms > 0:
+                        pass  # RP2350 still rebooting
+                    elif self._state() == STATE_MIRRORING:
                         self._detach()
                     elif self.hexp is not None:
-                        self._attach()
+                        self._attach_with_reset()
                 elif FACES[self.face] == "info":
                     self._editing = True
                     self._sel = 0
+            if (reset_req and FACES[self.face] == "status"
+                    and self.hexp is not None and self._wait_ms == 0):
+                self._reset_rp2350()
 
         self._update_leds(delta)
 
@@ -335,7 +391,10 @@ class HDMIManager(app.App):
         ctx.text_align = ctx.CENTER
         ctx.text_baseline = ctx.MIDDLE
         ctx.font_size = 20
-        ctx.rgb(*STATE_COLOR[state]).move_to(0, 50).text(STATE_LABEL[state])
+        if self._wait_ms > 0:
+            ctx.rgb(*STATE_COLOR[STATE_IDLE]).move_to(0, 50).text("Resetting...")
+        else:
+            ctx.rgb(*STATE_COLOR[state]).move_to(0, 50).text(STATE_LABEL[state])
         if self.port is not None:
             ctx.font_size = 14
             ctx.rgb(0.7, 0.7, 0.8).move_to(0, 70).text("Port %d" % self.port)
@@ -343,8 +402,11 @@ class HDMIManager(app.App):
         if self.hexp is None:
             ctx.rgb(0.6, 0.6, 0.6).move_to(0, 90).text("Plug in HDMI-HEX")
         else:
+            ctx.font_size = 12
             ctx.rgb(0.9, 0.9, 0.9).move_to(0, 90).text(
-                "OK: Detach" if state == STATE_MIRRORING else "OK: Attach"
+                "OK: Detach   Up: Reset"
+                if state == STATE_MIRRORING
+                else "OK: Attach   Up: Reset"
             )
         ctx.restore()
 

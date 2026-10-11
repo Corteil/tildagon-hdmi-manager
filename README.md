@@ -11,7 +11,10 @@ gives you two tiles, cycled with Left/Right:
 
 - **Status** — a monitor icon showing Mirroring (green, filled with
   signal bars) / Found, idle (amber, empty) / Not found (red, crossed
-  out), plus the port it's on. Press OK to attach or detach the mirror.
+  out), plus the port it's on. OK detaches the mirror, or, when idle,
+  hardware-resets the RP2350 (pulsing `LS_A` to its `RUN` pin), waits
+  1.5 s for it to reboot, then attaches. Up resets the RP2350 without
+  attaching. Needs `LS_A` wired to `RUN`; without it OK just attaches.
 - **Info** — identity (VID/PID, friendly name, unique ID) and an
   auto-attach-on-mount toggle (OK to edit, Up/Down to pick, Left/Right
   to toggle, OK again to close).
