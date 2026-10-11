@@ -296,18 +296,19 @@ class HDMIManager(app.App):
 
         if self._editing:
             n = len(self._menu_items())
-            if b.get(BUTTON_TYPES["UP"]):
+            # Latched reads, same as the tile nav below: with get()+clear()
+            # the OK that opened edit mode was still "down" on the next
+            # frame and closed it again straight away on fast frames.
+            if b.pressed(BUTTON_TYPES["UP"]):
                 self._sel = (self._sel - 1) % n
-                b.clear()
-            if b.get(BUTTON_TYPES["DOWN"]):
+            if b.pressed(BUTTON_TYPES["DOWN"]):
                 self._sel = (self._sel + 1) % n
-                b.clear()
-            if b.get(BUTTON_TYPES["LEFT"]) or b.get(BUTTON_TYPES["RIGHT"]):
+            left = b.pressed(BUTTON_TYPES["LEFT"])
+            right = b.pressed(BUTTON_TYPES["RIGHT"])
+            if left or right:
                 self._menu_toggle()
-                b.clear()
-            if b.get(BUTTON_TYPES["CONFIRM"]):
+            if b.pressed(BUTTON_TYPES["CONFIRM"]):
                 self._editing = False
-                b.clear()
         else:
             # Latched reads: one tile step per physical press, never
             # repeating while a button is held or an event is stuck.
