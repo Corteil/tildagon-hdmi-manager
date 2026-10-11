@@ -388,6 +388,10 @@ class HDMIManager(app.App):
     def _draw_status(self, ctx):
         state = self._state()
         ctx.save()
+        ctx.text_align = ctx.CENTER
+        ctx.text_baseline = ctx.MIDDLE
+        ctx.font_size = 18
+        ctx.rgb(0.8, 0.85, 1.0).move_to(0, -88).text("HDMI Manager")
         draw_monitor_icon(ctx, 0, -20, 46, state, STATE_COLOR[state])
         ctx.text_align = ctx.CENTER
         ctx.text_baseline = ctx.MIDDLE
