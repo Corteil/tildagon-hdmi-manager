@@ -319,7 +319,6 @@ class HDMIManager(app.App):
                 step -= 1
             if step:
                 self.face = (self.face + step) % len(FACES)
-            reset_req = b.pressed(BUTTON_TYPES["UP"])
             if b.pressed(BUTTON_TYPES["CONFIRM"]):
                 if FACES[self.face] == "status":
                     if self._wait_ms > 0:
@@ -331,9 +330,6 @@ class HDMIManager(app.App):
                 elif FACES[self.face] == "info":
                     self._editing = True
                     self._sel = 0
-            if (reset_req and FACES[self.face] == "status"
-                    and self.hexp is not None and self._wait_ms == 0):
-                self._reset_rp2350()
 
         self._update_leds(delta)
 
@@ -391,7 +387,7 @@ class HDMIManager(app.App):
         ctx.text_align = ctx.CENTER
         ctx.text_baseline = ctx.MIDDLE
         ctx.font_size = 18
-        ctx.rgb(0.8, 0.85, 1.0).move_to(0, -88).text("HDMI Manager")
+        ctx.rgb(0.8, 0.85, 1.0).move_to(0, -74).text("HDMI Manager")
         draw_monitor_icon(ctx, 0, -20, 46, state, STATE_COLOR[state])
         ctx.text_align = ctx.CENTER
         ctx.text_baseline = ctx.MIDDLE
@@ -407,11 +403,8 @@ class HDMIManager(app.App):
         if self.hexp is None:
             ctx.rgb(0.6, 0.6, 0.6).move_to(0, 90).text("Plug in HDMI-HEX")
         else:
-            ctx.font_size = 12
             ctx.rgb(0.9, 0.9, 0.9).move_to(0, 90).text(
-                "OK: Detach   Up: Reset"
-                if state == STATE_MIRRORING
-                else "OK: Attach   Up: Reset"
+                "OK: Detach" if state == STATE_MIRRORING else "OK: Attach"
             )
         ctx.restore()
 
