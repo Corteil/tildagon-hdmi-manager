@@ -259,13 +259,16 @@ class HDMIManager(app.App):
                 self._editing = False
                 b.clear()
         else:
-            if b.get(BUTTON_TYPES["RIGHT"]):
-                self.face = (self.face + 1) % len(FACES)
-                b.clear()
-            if b.get(BUTTON_TYPES["LEFT"]):
-                self.face = (self.face - 1) % len(FACES)
-                b.clear()
-            if b.get(BUTTON_TYPES["CONFIRM"]):
+            # Latched reads: one tile step per physical press, never
+            # repeating while a button is held or an event is stuck.
+            step = 0
+            if b.pressed(BUTTON_TYPES["RIGHT"]):
+                step += 1
+            if b.pressed(BUTTON_TYPES["LEFT"]):
+                step -= 1
+            if step:
+                self.face = (self.face + step) % len(FACES)
+            if b.pressed(BUTTON_TYPES["CONFIRM"]):
                 if FACES[self.face] == "status":
                     if self._state() == STATE_MIRRORING:
                         self._detach()
@@ -274,7 +277,6 @@ class HDMIManager(app.App):
                 elif FACES[self.face] == "info":
                     self._editing = True
                     self._sel = 0
-                b.clear()
 
         self._update_leds(delta)
 
