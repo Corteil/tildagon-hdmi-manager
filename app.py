@@ -15,6 +15,7 @@ just attach/detach against the one correct protocol.
 License: MIT
 """
 import app
+import asyncio
 import math
 import time
 import display
@@ -33,6 +34,12 @@ HDMI_PID = 0x4544
 HDMI_DRIVER = {"header": b"TDHD", "baudrate": 10_000_000}
 
 FACES = ("status", "info")
+
+# Control register in the hexpansion's emulated EEPROM (see the firmware's
+# eeprom_i2c.h): bit 0 enables the 3V3->5V boost for the HDMI +5V pin.
+EEPROM_I2C_ADDR = 0x50
+CTRL_ADDR = 0x20
+CTRL_BOOST_EN = 0x01
 
 # LS_A is wired to the RP2350's RUN pin: pulling it low resets the board.
 # Same pulse as rp2350-hdmi-hexpansion's own badge_app, with the same
@@ -159,6 +166,7 @@ class HDMIManager(app.App):
 
         self._editing = False
         self._sel = 0
+        self._boost_cache = None
 
         self._led_phase = 0
         self._led_state = None
@@ -207,6 +215,8 @@ class HDMIManager(app.App):
                 self.header = getattr(e, "header", None) or self.header
                 if _get("hdmi_auto_attach", True):
                     self._attach()
+        if self.port is not None and getattr(e, "port", None) == self.port:
+            await self._boost_sync_retry()
 
     async def _unmounted(self, e):
         if self.port is not None and getattr(e, "port", None) == self.port:
@@ -268,6 +278,64 @@ class HDMIManager(app.App):
         else:
             self._attach()
 
+    # --- 5V boost (firmware control register) ---------------------------
+
+    def _ctrl_i2c(self):
+        from machine import I2C
+        return I2C(self.port)
+
+    def _boost_read(self):
+        """True/False from the firmware, or None if it can't be read."""
+        if self.port is None:
+            return None
+        try:
+            v = self._ctrl_i2c().readfrom_mem(EEPROM_I2C_ADDR, CTRL_ADDR, 1, addrsize=16)[0]
+            return bool(v & CTRL_BOOST_EN)
+        except Exception as e:
+            print("HDMI Manager: boost read failed:", e)
+            return None
+
+    def _boost_saved(self):
+        return bool(_get("hdmi_boost", True))
+
+    def _boost_sync(self):
+        """Push the saved boost setting to the firmware if it differs
+        (the RP2350 boots with the boost on). False if it couldn't be read,
+        i.e. the RP2350 isn't ready yet."""
+        cur = self._boost_read()
+        if cur is None:
+            return False
+        saved = self._boost_saved()
+        if cur != saved:
+            self._boost_write(saved, remember=False)
+        else:
+            self._boost_cache = cur
+        return True
+
+    async def _boost_sync_retry(self):
+        # The relay app resets the RP2350 shortly after insertion, so give
+        # it time to come back before pushing the saved setting.
+        for delay in (3, 2, 2, 3):
+            await asyncio.sleep(delay)
+            if self.port is None or self._boost_sync():
+                return
+
+    def _boost_write(self, on, remember=True):
+        if remember:
+            _set("hdmi_boost", on)
+        self._boost_cache = on
+        if self.port is None:
+            return
+        try:
+            self._ctrl_i2c().writeto_mem(
+                EEPROM_I2C_ADDR, CTRL_ADDR,
+                bytes([CTRL_BOOST_EN if on else 0]), addrsize=16)
+        except Exception as e:
+            print("HDMI Manager: boost write failed:", e)
+        cur = self._boost_read()
+        if cur is not None:
+            self._boost_cache = cur
+
     def _detach(self):
         try:
             display.detach_mirror(0)
@@ -285,6 +353,7 @@ class HDMIManager(app.App):
                 if self._then_attach:
                     self._then_attach = False
                     self._attach()
+                self._boost_sync()
         if b.get(BUTTON_TYPES["CANCEL"]):
             b.clear()
             if self._editing:
@@ -330,15 +399,25 @@ class HDMIManager(app.App):
                 elif FACES[self.face] == "info":
                     self._editing = True
                     self._sel = 0
+                    cur = self._boost_read()
+                    if cur is not None:
+                        self._boost_cache = cur
 
         self._update_leds(delta)
 
     def _menu_items(self):
-        return [("hdmi_auto_attach", "Auto-attach", _get("hdmi_auto_attach", True))]
+        return [
+            ("hdmi_auto_attach", "Auto-attach", _get("hdmi_auto_attach", True)),
+            ("boost", "5V boost",
+             self._boost_saved() if self._boost_cache is None else self._boost_cache),
+        ]
 
     def _menu_toggle(self):
         key, label, cur = self._menu_items()[self._sel]
-        _set(key, not cur)
+        if key == "boost":
+            self._boost_write(not cur)
+        else:
+            _set(key, not cur)
 
     # --- LEDs ---------------------------------------------------------
 
@@ -445,14 +524,15 @@ class HDMIManager(app.App):
             ctx.rgb(0.65, 0.8, 1.0).move_to(-78, y).text(label)
             ctx.text_align = ctx.RIGHT
             ctx.rgb(*((1.0, 0.95, 0.4) if sel else (0.92, 0.92, 0.92)))
-            ctx.move_to(78, y).text("on" if cur else "off")
+            ctx.move_to(78, y).text("--" if cur is None else ("on" if cur else "off"))
             y += 26
 
         ctx.font_size = 11
         ctx.rgb(0.55, 0.6, 0.7)
         ctx.text_align = ctx.CENTER
         if self._editing:
-            ctx.move_to(0, 94).text("Up/Dn pick   L/R toggle   OK done")
+            ctx.move_to(0, 84).text("Up/Dn pick  L/R toggle")
+            ctx.move_to(0, 99).text("OK done")
         else:
             ctx.move_to(0, 94).text("OK to edit")
         ctx.restore()

@@ -16,9 +16,14 @@ gives you two tiles, cycled with Left/Right:
   (pulsing `LS_A` to its `RUN` pin), waits 1.5 s for it to reboot
   (the tile shows "Resetting..." and ignores OK meanwhile), then
   attaches. Needs `LS_A` wired to `RUN`; without it OK just attaches.
-- **Info** — identity (VID/PID, friendly name, unique ID) and an
-  auto-attach-on-mount toggle (OK to edit, Up/Down to pick, Left/Right
-  to toggle, OK again to close).
+- **Info** — identity (VID/PID, friendly name, unique ID) and two toggles:
+  auto-attach-on-mount and the **5V boost** for the HDMI +5V pin (OK to
+  edit, Up/Down to pick, Left/Right to toggle, OK again to close). The
+  boost setting (`hdmi_boost`, default on) is saved like auto-attach and
+  written to the RP2350 firmware over the hexpansion's EEPROM I2C
+  (control byte at `0x20`, bit 0). The firmware boots with the boost off, so
+  the app re-applies the saved setting after the hexpansion mounts and after
+  its own reset.
 
 This hexpansion's RP2350 receiver only ever correctly speaks one
 protocol — a `TDHD`-header frame at 10MHz. There's deliberately no
@@ -36,6 +41,8 @@ Auto-attach toggle on its screen (OK), so the setting works on a badge
 that doesn't have this app installed. Both need badge firmware with the
 display-mirroring patch (`display.attach_mirror` / `is_mirror_active`).
 This app adds status, manual attach/detach/reset and the identity page.
+The relay app has the same boost switch on its `B` key, using the same
+`hdmi_boost` setting.
 
 ## Manual method
 
